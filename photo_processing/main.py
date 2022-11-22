@@ -5,9 +5,15 @@ import multiprocess as mp
 import time
 
 process_count = 4
+single_process = False
 
-if len(sys.argv) == 2 and int(sys.argv[1]) <= mp.cpu_count():  #checking, if the right value was entered
+if len(sys.argv) >= 2 and int(sys.argv[1]) <= mp.cpu_count():  #checking, if the right value was entered
     process_count = int(sys.argv[1])
+    if len(sys.argv) >= 3 and sys.argv[2] == 's':
+        single_process = True
+elif len(sys.argv) < 2:
+    pass
+    #print(f'Aviable are {mp.cpu_count()}. Running on default {process_count} cores.')
 else:
     print(f'Error occured. Aviable are {mp.cpu_count()}, but entered {sys.argv[1]}. Running on default {process_count} cores.')
     sys.argv[1] = process_count  #if the false value entered, sets the default value
@@ -45,7 +51,7 @@ def hdr(particle):  #hdr. takes only one argument
     
     return hdr
 
-def process_img(id, img_particle, tasks_done, return_list):
+def process_img(id, img_particle, tasks_done=None, return_list=None):
     if img_particle is not None:
         start_count = time.time()
         if id == 0 or id == 4:
@@ -58,10 +64,13 @@ def process_img(id, img_particle, tasks_done, return_list):
         elif id == 3 or id == 7:
             part = sharpness(img_particle)
         #specified dictionary, given in init function
-        return_list[f'{id}'] = np.vstack([part])    
-        stop_count = time.time() - start_count
-        #returns array of tasks completed
-        tasks_done.put(f'Particle {id+1} was processed in {stop_count}s.')
+        if single_process is False:
+            return_list[f'{id}'] = np.vstack([part])    
+            stop_count = time.time() - start_count
+            #returns array of tasks completed
+            tasks_done.put(f'Particle {id+1} was processed in {stop_count}s.')
+        else:
+            return np.vstack([part])
 
 if __name__ == '__main__':
     
@@ -80,7 +89,7 @@ if __name__ == '__main__':
     particle_arr = []
     
     
-    if process_count >= 1:
+    if process_count >= 1 and single_process is False:
         one_el_width = w//process_count     #single elemen width, to calculate other elements
         for a in range(process_count):
             particle = image[0:h, one_el_width*a:(one_el_width*a)+one_el_width]
@@ -88,6 +97,8 @@ if __name__ == '__main__':
         
         procs = []
 
+        start_time = time.time()
+        
         for i in range(len(particle_arr)):
             print(f'{i} process started')
             proc = mp.Process(target=process_img, args=(i, particle_arr[i], tasks_done, return_list))
@@ -104,12 +115,41 @@ if __name__ == '__main__':
         return_list = list(return_list.items())     #parsing returned dict and making it a list, to sort it 
         return_list.sort(key=sort_filter)   #sorting the list using sort function
 
+        stop_time = time.time() - start_time
+        print((f'Image was processed in {stop_time}s.'))
 
         parsed_return_list = []
         for x in return_list:
             parsed_return_list.append(x[1]) #parsing list and returning it without keys
             
         processed_img = np.hstack(parsed_return_list)   #constructing image from particles
+        cv2.namedWindow("Processed image", cv2.WINDOW_NORMAL)
+        processed_img = cv2.resize(processed_img, (1000, 1000))
         cv2.imshow('Processed image', processed_img)
         cv2.waitKey(0)
+    
+    else:
+        processed_parts = []
+        one_el_width = w//4     #single elemen width, to calculate other elements
+        for a in range(4):
+            particle = image[0:h, one_el_width*a:(one_el_width*a)+one_el_width]
+            particle_arr.append(particle)
+            
+        start_time = time.time() 
+        
+        for i in range(len(particle_arr)):
+            print(f'{i} particle being processed')
+            part = process_img(i, particle_arr[i])
+            processed_parts.append(part)
+        
+        stop_time = time.time() - start_time
+        
+        print((f'Image was processed in {stop_time}s.'))
+        
+        processed_img = np.hstack(processed_parts) 
+        cv2.namedWindow("Processed image", cv2.WINDOW_NORMAL)
+        processed_img = cv2.resize(processed_img, (1000, 1000))
+        cv2.imshow('Processed image', processed_img)
+        cv2.waitKey(0)
+
     
